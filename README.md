@@ -70,6 +70,44 @@ NEW_MARKETS_FOR_ANALYSIS = 3  # Trigger AI when 3 new markets
 USE_SWARM_MODE = True         # Use multiple AI models
 ```
 
+## API Cost Estimates
+
+The agent uses AI models for market analysis. Costs depend on which models are enabled and how often analysis runs.
+
+### Per Analysis Run
+
+| Model | Input Tokens | Output Tokens | Est. Cost |
+|-------|-------------|---------------|-----------|
+| Claude Sonnet | ~4,000 | ~2,000 | ~$0.04 |
+| GPT-4o | ~4,000 | ~2,000 | ~$0.03 |
+| DeepSeek | ~4,000 | ~2,000 | ~$0.002 |
+| Groq (Llama) | ~4,000 | ~2,000 | ~$0.003 |
+
+### Estimated Total Costs
+
+| Timeframe | Analysis Runs | Est. Cost (all models) |
+|-----------|--------------|------------------------|
+| Per hour | 1-3 | $0.05-0.15 |
+| Per day (8 hrs) | 8-24 | $0.40-1.20 |
+| Per day (24 hrs) | 24-72 | $1.20-3.50 |
+| Per month (24/7) | ~1,500 | $35-100 |
+
+*Costs vary based on market activity and enabled models.*
+
+### Reduce Costs
+
+1. **Use fewer models** - Edit `src/agents/swarm_agent.py` to disable expensive models:
+   ```python
+   SWARM_MODELS = {
+       "claude": (False, ...),  # Disable Claude
+       "deepseek": (True, ...),  # Keep cheap models
+   }
+   ```
+
+2. **Run analysis less often** - Increase `ANALYSIS_CHECK_INTERVAL_SECONDS`
+
+3. **Use local models** - Enable Ollama for free local inference
+
 ## Project Structure
 
 ```
