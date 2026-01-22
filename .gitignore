@@ -1,0 +1,17 @@
+# Environment variables (API keys)
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# IDE
+.vscode/
+.idea/
+
+# Data files (optional - remove if you want to track these)
+src/data/polymarket/*.csv

@@ -1,0 +1,29 @@
+# Core dependencies for Polymarket Agent
+
+# Data handling
+pandas>=2.0.0
+
+# HTTP requests and WebSocket
+requests>=2.28.0
+websocket-client>=1.6.0
+
+# Terminal output
+termcolor>=2.3.0
+
+# Environment variables
+python-dotenv>=1.0.0
+
+# AI Model SDKs (install based on which providers you use)
+# At least one of these is required:
+
+# Claude (Anthropic)
+anthropic>=0.40.0
+
+# OpenAI (also used by DeepSeek, xAI, OpenRouter)
+openai>=1.0.0
+
+# Groq
+groq>=0.4.0
+
+# Google Gemini
+google-generativeai>=0.5.0
