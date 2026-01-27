@@ -1,0 +1,22 @@
+{
+  "timestamp": "2026-01-22T16:43:24.920645",
+  "prompt": "Analyze these 3 Polymarket markets and provide your predictions:\n\nMarket 1:\nTitle: Spurs vs. Jazz\nRecent trade: $17,280.00 on Jazz\nLink: https://polymarket.com/event/nba-sas-uta-2026-01-22\n\nMarket 2:\nTitle: Tesla launches unsupervised full self driving (FSD) by March 31?\nRecent trade: $1,000.00 on Yes\nLink: https://polymarket.com/event/tesla-launches-unsupervised-full-self-driving-fsd-by\n\nMarket 3:\nTitle: Nuggets vs. Wizards: O/U 232.5\nRecent trade: $935.00 on Under\nLink: https://polymarket.com/event/nba-den-was-2026-01-22\n\nProvide predictions for each market in the specified format.",
+  "system_prompt": "You are a prediction market expert analyzing Polymarket markets.\nFor each market, provide your prediction in this exact format:\n\nMARKET [number]: [decision]\nReasoning: [brief 1-2 sentence explanation]\n\nDecision must be one of: YES, NO, or NO_TRADE\n- YES means you would bet on the \"Yes\" outcome\n- NO means you would bet on the \"No\" outcome\n- NO_TRADE means you would not take a position\n\nBe concise and focused on the most promising opportunities.",
+  "consensus_summary": "Consensus reviewer model not available.",
+  "model_mapping": {
+    "AI #1": "CLAUDE"
+  },
+  "responses": {
+    "claude": {
+      "response": "MARKET 1: NO_TRADE\nReasoning: Without current odds, team records, injuries, or home/away context, I cannot assess if the Jazz bet represents value. NBA games require detailed situational analysis.\n\nMARKET 2: NO\nReasoning: Tesla has consistently missed FSD timelines, and \"unsupervised\" (no driver attention) faces massive regulatory hurdles that cannot be resolved in ~2 months. March 31 deadline is extremely aggressive.\n\nMARKET 3: NO_TRADE\nReasoning: Without knowing the current line movement, team pace factors, injury reports, or back-to-back situations, I cannot determine if Under 232.5 offers value despite the recent sharp action.",
+      "response_time": 5.77,
+      "success": true
+    }
+  },
+  "metadata": {
+    "total_models": 1,
+    "successful_responses": 1,
+    "failed_responses": 0,
+    "total_time": 5.77
+  }
+}
