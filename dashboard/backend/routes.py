@@ -3,14 +3,18 @@
 from fastapi import APIRouter, Query
 from typing import List
 from . import csv_reader
+from . import kalshi_csv_reader
 
 router = APIRouter()
 
 
 @router.get("/api/stats")
 async def get_stats():
-    """Get dashboard statistics"""
-    return csv_reader.get_stats()
+    """Get combined dashboard statistics"""
+    stats = csv_reader.get_stats()
+    stats.update(kalshi_csv_reader.get_kalshi_stats())
+    stats.update(kalshi_csv_reader.get_arbitrage_stats())
+    return stats
 
 
 @router.get("/api/markets")
@@ -29,6 +33,36 @@ async def get_predictions(limit: int = Query(default=50, le=200)):
 async def get_consensus_picks(limit: int = Query(default=20, le=100)):
     """Get top consensus picks"""
     return csv_reader.read_consensus_picks(limit=limit)
+
+
+@router.get("/api/kalshi/markets")
+async def get_kalshi_markets(limit: int = Query(default=100, le=500)):
+    """Get recent Kalshi markets"""
+    return kalshi_csv_reader.read_kalshi_markets(limit=limit)
+
+
+@router.get("/api/kalshi/predictions")
+async def get_kalshi_predictions(limit: int = Query(default=50, le=200)):
+    """Get recent Kalshi predictions"""
+    return kalshi_csv_reader.read_kalshi_predictions(limit=limit)
+
+
+@router.get("/api/kalshi/consensus")
+async def get_kalshi_consensus_picks(limit: int = Query(default=20, le=100)):
+    """Get Kalshi consensus picks"""
+    return kalshi_csv_reader.read_kalshi_consensus_picks(limit=limit)
+
+
+@router.get("/api/arbitrage/opportunities")
+async def get_arbitrage_opportunities(limit: int = Query(default=50, le=200)):
+    """Get arbitrage opportunities"""
+    return kalshi_csv_reader.read_arbitrage_opportunities(limit=limit)
+
+
+@router.get("/api/arbitrage/history")
+async def get_arbitrage_history(limit: int = Query(default=20, le=100)):
+    """Get arbitrage scan history"""
+    return kalshi_csv_reader.read_arbitrage_history(limit=limit)
 
 
 @router.get("/api/health")
