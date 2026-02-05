@@ -67,9 +67,9 @@ class ModelFactory:
         for key in ["GROQ_API_KEY", "OPENAI_KEY", "ANTHROPIC_KEY", "DEEPSEEK_KEY", "GROK_API_KEY", "GEMINI_KEY", "OPENROUTER_API_KEY"]:
             value = os.getenv(key)
             if value and len(value.strip()) > 0:
-                cprint(f"  ├─ {key}: Found ({len(value)} chars)", "green")
+                cprint(f"  - {key}: Found ({len(value)} chars)", "green")
             else:
-                cprint(f"  ├─ {key}: Not found or empty", "red")
+                cprint(f"  - {key}: Not found or empty", "red")
         
         # Try to initialize each model type
         for model_type, key_name in self._get_api_key_mapping().items():
@@ -247,7 +247,7 @@ class ModelFactory:
         except Exception as e:
             if "503" in str(e):
                 raise e  # Let the retry logic handle 503s
-            cprint(f"❌ Model error: {str(e)}", "red")
+            cprint(f"[X] Model error: {str(e)}", "red")
             return None
 
 # Create a singleton instance
