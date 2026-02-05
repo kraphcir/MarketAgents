@@ -1,6 +1,6 @@
 """
 Arbitrage Agent - Cross-platform opportunity detection between Polymarket and Kalshi.
-Fuzzy-matches markets, validates equivalence with AI, and calculates price spreads.
+Fetches market data directly from both APIs, fuzzy-matches markets, and calculates price spreads.
 NO ACTUAL TRADING - detection and analysis only.
 """
 
@@ -8,6 +8,7 @@ import os
 import sys
 import time
 import re
+import requests
 import pandas as pd
 import threading
 from datetime import datetime, timedelta
@@ -31,28 +32,34 @@ except ImportError:
 # CONFIGURATION
 # ==============================================================================
 
-# Arbitrage detection thresholds
-SPREAD_THRESHOLD_CENTS = 5          # Minimum spread in cents to flag (0.05)
-STRONG_OPPORTUNITY_CENTS = 10       # "Strong" opportunity threshold (0.10)
-FUZZY_MATCH_THRESHOLD = 65          # Minimum fuzz ratio for title matching (0-100)
-AI_EQUIVALENCE_THRESHOLD = 0.8      # Min AI confidence that markets are equivalent
+# API Endpoints
+POLYMARKET_API_BASE = "https://gamma-api.polymarket.com"
+KALSHI_API_BASE = "https://api.elections.kalshi.com/trade-api/v2"
+
+# Arbitrage detection thresholds (relaxed to find more opportunities)
+SPREAD_THRESHOLD_CENTS = 1          # Minimum spread in cents to flag (0.01)
+STRONG_OPPORTUNITY_CENTS = 5        # "Strong" opportunity threshold (0.05)
+FUZZY_MATCH_THRESHOLD = 50          # Minimum fuzz ratio for title matching (0-100)
+AI_EQUIVALENCE_THRESHOLD = 0.6      # Min AI confidence that markets are equivalent
 
 # Fee structure (conservative estimates)
 POLYMARKET_FEE_PERCENT = 2.0        # Polymarket trading fee
 KALSHI_FEE_PERCENT = 1.0            # Kalshi fee on profit
 
 # Scanning
-SCAN_INTERVAL_SECONDS = 600         # Check for arbitrage every 10 minutes
-MAX_MARKETS_TO_COMPARE = 200        # Cap to prevent combinatorial explosion
+SCAN_INTERVAL_SECONDS = 300         # Check for arbitrage every 5 minutes
+MAX_MARKETS_TO_COMPARE = 500        # Cap to prevent combinatorial explosion
 
-# AI validation
-USE_AI_VALIDATION = True            # Use AI to confirm market equivalence
+# API settings
+REQUEST_TIMEOUT = 30
+REQUEST_DELAY = 0.1                 # Delay between paginated requests
+
+# AI validation (set to False for faster scanning, relies on fuzzy match only)
+USE_AI_VALIDATION = False           # Use AI to confirm market equivalence
 AI_VALIDATION_MODEL = "claude"
 AI_VALIDATION_MODEL_NAME = "claude-sonnet-4-5"
 
-# Data paths
-POLYMARKET_DATA = os.path.join(project_root, "src/data/polymarket")
-KALSHI_DATA = os.path.join(project_root, "src/data/kalshi")
+# Data paths (output only - no longer reading from other agents)
 DATA_FOLDER = os.path.join(project_root, "src/data/arbitrage")
 OPPORTUNITIES_CSV = os.path.join(DATA_FOLDER, "opportunities.csv")
 MATCHED_MARKETS_CSV = os.path.join(DATA_FOLDER, "matched_markets.csv")
@@ -74,7 +81,7 @@ class ArbitrageAgent:
 
     def __init__(self):
         cprint("\n" + "="*80, "cyan")
-        cprint("[*] Arbitrage Agent - Polymarket vs Kalshi", "cyan", attrs=['bold'])
+        cprint("[*] Arbitrage Agent - Polymarket vs Kalshi (Direct API)", "cyan", attrs=['bold'])
         cprint("="*80, "cyan")
 
         os.makedirs(DATA_FOLDER, exist_ok=True)
@@ -83,6 +90,11 @@ class ArbitrageAgent:
 
         # Matched markets cache (avoid re-validating with AI)
         self.matched_cache = self._load_matched_cache()
+
+        # API stats
+        self.polymarket_api_calls = 0
+        self.kalshi_api_calls = 0
+        self.api_errors = 0
 
         # AI model for equivalence validation
         if USE_AI_VALIDATION:
@@ -97,31 +109,174 @@ class ArbitrageAgent:
 
         cprint("[+] Initialization complete!\n", "green")
 
-    # ── Data Loading ──────────────────────────────────────────────────────────
+    # ── API Fetching ─────────────────────────────────────────────────────────
 
-    def _load_polymarket_markets(self) -> pd.DataFrame:
-        """Load Polymarket markets from CSV."""
-        csv_path = os.path.join(POLYMARKET_DATA, "markets.csv")
-        if not os.path.exists(csv_path):
-            cprint("[!] Polymarket markets.csv not found - run polymarket_agent.py first", "yellow")
-            return pd.DataFrame()
+    def fetch_polymarket_markets(self) -> pd.DataFrame:
+        """Fetch active markets directly from Polymarket API."""
+        cprint("[API] Fetching Polymarket markets...", "cyan")
+        all_markets = []
+
         try:
-            return pd.read_csv(csv_path)
-        except Exception as e:
-            cprint(f"[X] Error loading Polymarket markets: {e}", "red")
+            # Fetch active markets from Polymarket gamma API
+            params = {
+                'active': 'true',
+                'closed': 'false',
+                'limit': 100,
+            }
+
+            offset = 0
+            while True:
+                params['offset'] = offset
+                response = requests.get(
+                    f"{POLYMARKET_API_BASE}/markets",
+                    params=params,
+                    timeout=REQUEST_TIMEOUT,
+                    headers={'Accept': 'application/json'}
+                )
+                response.raise_for_status()
+                self.polymarket_api_calls += 1
+
+                markets = response.json()
+                if not markets:
+                    break
+
+                all_markets.extend(markets)
+                offset += len(markets)
+
+                if len(markets) < 100:
+                    break
+
+                time.sleep(REQUEST_DELAY)
+
+                # Safety cap
+                if offset >= 1000:
+                    break
+
+            cprint(f"[+] Fetched {len(all_markets)} Polymarket markets", "green")
+
+            # Convert to DataFrame with standardized columns
+            if not all_markets:
+                return pd.DataFrame()
+
+            records = []
+            for m in all_markets:
+                try:
+                    # Get best bid/ask from orderbook or use outcomePrices
+                    outcome_prices = m.get('outcomePrices', '[]')
+                    if isinstance(outcome_prices, str):
+                        try:
+                            import json
+                            outcome_prices = json.loads(outcome_prices)
+                        except:
+                            outcome_prices = []
+
+                    yes_price = 0.5
+                    if outcome_prices and len(outcome_prices) > 0:
+                        try:
+                            yes_price = float(outcome_prices[0])
+                        except:
+                            pass
+
+                    # Get volume
+                    volume = 0
+                    try:
+                        volume = float(m.get('volume', 0) or 0)
+                    except:
+                        pass
+
+                    records.append({
+                        'title': m.get('question', '') or m.get('title', ''),
+                        'slug': m.get('slug', ''),
+                        'condition_id': m.get('conditionId', ''),
+                        'price': yes_price,
+                        'volume': volume,
+                        'active': m.get('active', True),
+                    })
+                except Exception as e:
+                    continue
+
+            return pd.DataFrame(records)
+
+        except requests.exceptions.RequestException as e:
+            self.api_errors += 1
+            cprint(f"[X] Polymarket API error: {e}", "red")
             return pd.DataFrame()
 
-    def _load_kalshi_markets(self) -> pd.DataFrame:
-        """Load Kalshi markets from CSV."""
-        csv_path = os.path.join(KALSHI_DATA, "markets.csv")
-        if not os.path.exists(csv_path):
-            cprint("[!] Kalshi markets.csv not found - run kalshi_agent.py first", "yellow")
-            return pd.DataFrame()
+    def fetch_kalshi_markets(self) -> pd.DataFrame:
+        """Fetch active markets directly from Kalshi API."""
+        cprint("[API] Fetching Kalshi markets...", "cyan")
+        all_markets = []
+        cursor = None
+
         try:
-            return pd.read_csv(csv_path)
-        except Exception as e:
-            cprint(f"[X] Error loading Kalshi markets: {e}", "red")
+            while True:
+                params = {
+                    'status': 'open',
+                    'limit': 200,
+                }
+                if cursor:
+                    params['cursor'] = cursor
+
+                response = requests.get(
+                    f"{KALSHI_API_BASE}/markets",
+                    params=params,
+                    timeout=REQUEST_TIMEOUT,
+                    headers={'Accept': 'application/json'}
+                )
+                response.raise_for_status()
+                self.kalshi_api_calls += 1
+
+                data = response.json()
+                markets = data.get('markets', [])
+
+                if not markets:
+                    break
+
+                all_markets.extend(markets)
+                cursor = data.get('cursor')
+
+                if not cursor:
+                    break
+
+                time.sleep(REQUEST_DELAY)
+
+                # Safety cap
+                if len(all_markets) >= 2000:
+                    break
+
+            cprint(f"[+] Fetched {len(all_markets)} Kalshi markets", "green")
+
+            # Convert to DataFrame with standardized columns
+            if not all_markets:
+                return pd.DataFrame()
+
+            records = []
+            for m in all_markets:
+                try:
+                    yes_bid = float(m.get('yes_bid_dollars', 0) or 0)
+                    yes_ask = float(m.get('yes_ask_dollars', 0) or 0)
+                    volume = float(m.get('volume_24h_fp', 0) or 0)
+
+                    records.append({
+                        'title': m.get('yes_sub_title', '') or m.get('ticker', ''),
+                        'ticker': m.get('ticker', ''),
+                        'event_ticker': m.get('event_ticker', ''),
+                        'yes_bid': yes_bid,
+                        'yes_ask': yes_ask,
+                        'volume': volume,
+                        'status': m.get('status', ''),
+                    })
+                except Exception as e:
+                    continue
+
+            return pd.DataFrame(records)
+
+        except requests.exceptions.RequestException as e:
+            self.api_errors += 1
+            cprint(f"[X] Kalshi API error: {e}", "red")
             return pd.DataFrame()
+
+    # ── Cache Management ─────────────────────────────────────────────────────
 
     def _load_matched_cache(self) -> dict:
         """Load cached market pair validations to avoid re-querying AI."""
@@ -226,18 +381,10 @@ class ArbitrageAgent:
         return ' '.join(words)
 
     def fuzzy_match_markets(self, poly_df: pd.DataFrame, kalshi_df: pd.DataFrame) -> list:
-        """Find candidate market pairs using fuzzy title matching.
-
-        Args:
-            poly_df: Polymarket markets DataFrame
-            kalshi_df: Kalshi markets DataFrame
-
-        Returns:
-            List of candidate pair dicts sorted by match score descending
-        """
+        """Find candidate market pairs using fuzzy title matching."""
         # Cap the number of markets to prevent combinatorial explosion
-        poly_subset = poly_df.tail(MAX_MARKETS_TO_COMPARE)
-        kalshi_subset = kalshi_df.tail(MAX_MARKETS_TO_COMPARE)
+        poly_subset = poly_df.head(MAX_MARKETS_TO_COMPARE)
+        kalshi_subset = kalshi_df.head(MAX_MARKETS_TO_COMPARE)
 
         candidates = []
 
@@ -283,13 +430,8 @@ class ArbitrageAgent:
         return deduped
 
     def ai_validate_equivalence(self, poly_title: str, kalshi_title: str) -> tuple:
-        """Use AI to determine if two markets are asking the same question.
-
-        Returns:
-            (is_equivalent: bool, confidence: float, reasoning: str)
-        """
+        """Use AI to determine if two markets are asking the same question."""
         if not self.ai_model:
-            # No AI model available - rely on fuzzy score alone
             return (True, 0.5, "AI validation disabled")
 
         prompt = f"""You are evaluating whether two prediction markets from different platforms are asking the same question with the same resolution criteria.
@@ -345,26 +487,16 @@ REASONING: [one sentence explanation]"""
 
     def calculate_spread(self, poly_price: float, kalshi_yes_bid: float,
                          kalshi_yes_ask: float) -> list:
-        """Calculate all possible arbitrage strategies between a matched pair.
-
-        Args:
-            poly_price: Polymarket YES price (0-1)
-            kalshi_yes_bid: Kalshi best YES bid
-            kalshi_yes_ask: Kalshi best YES ask
-
-        Returns:
-            List of viable strategy dicts with spread/profit info
-        """
+        """Calculate all possible arbitrage strategies between a matched pair."""
         strategies = []
         fee_rate = (POLYMARKET_FEE_PERCENT + KALSHI_FEE_PERCENT) / 100
 
         # Strategy 1: Buy YES on Kalshi, sell YES on Polymarket
-        # Profitable if Kalshi ask < Polymarket price
         if kalshi_yes_ask > 0 and poly_price > kalshi_yes_ask:
             spread = poly_price - kalshi_yes_ask
             spread_cents = round(spread * 100, 2)
             gross = spread_cents
-            fees = round(fee_rate * 100, 2)  # fees on a $1 contract
+            fees = round(fee_rate * 100, 2)
             net = round(gross - fees, 2)
 
             strategies.append({
@@ -377,7 +509,6 @@ REASONING: [one sentence explanation]"""
             })
 
         # Strategy 2: Buy YES on Polymarket, sell YES on Kalshi
-        # Profitable if Polymarket price < Kalshi bid
         if kalshi_yes_bid > 0 and kalshi_yes_bid > poly_price:
             spread = kalshi_yes_bid - poly_price
             spread_cents = round(spread * 100, 2)
@@ -394,9 +525,7 @@ REASONING: [one sentence explanation]"""
                 'strategy': f"Buy YES on Polymarket @ ${poly_price:.2f}, implied sell on Kalshi @ ${kalshi_yes_bid:.2f}",
             })
 
-        # Strategy 3: Cross-platform hedge (guaranteed profit regardless of outcome)
-        # Buy YES on Kalshi + Buy NO on Polymarket
-        # Profit if: kalshi_yes_ask + (1 - poly_price) < 1.00
+        # Strategy 3: Cross-platform hedge (guaranteed profit)
         poly_no_cost = 1.0 - poly_price
         total_cost_3 = kalshi_yes_ask + poly_no_cost
         if kalshi_yes_ask > 0 and total_cost_3 < 1.0:
@@ -416,8 +545,6 @@ REASONING: [one sentence explanation]"""
             })
 
         # Strategy 4: Reverse hedge
-        # Buy YES on Polymarket + Buy NO on Kalshi
-        # Profit if: poly_price + (1 - kalshi_yes_bid) < 1.00
         kalshi_no_cost = 1.0 - kalshi_yes_bid if kalshi_yes_bid > 0 else 1.0
         total_cost_4 = poly_price + kalshi_no_cost
         if kalshi_yes_bid > 0 and total_cost_4 < 1.0:
@@ -451,11 +578,7 @@ REASONING: [one sentence explanation]"""
     # ── Main Scan ─────────────────────────────────────────────────────────────
 
     def run_scan(self) -> dict:
-        """Run a full arbitrage scan cycle.
-
-        Returns:
-            Summary dict with scan results
-        """
+        """Run a full arbitrage scan cycle."""
         scan_start = time.time()
         scan_id = datetime.now().strftime("%Y%m%d_%H%M%S")
         timestamp = datetime.now().isoformat()
@@ -464,18 +587,18 @@ REASONING: [one sentence explanation]"""
         cprint(f"[ARB] ARBITRAGE SCAN - {scan_id}", "white", "on_magenta", attrs=['bold'])
         cprint("="*80, "white", "on_magenta", attrs=['bold'])
 
-        # 1. Load markets from both platforms
-        poly_df = self._load_polymarket_markets()
-        kalshi_df = self._load_kalshi_markets()
+        # 1. Fetch markets from both platforms (DIRECT API CALLS)
+        poly_df = self.fetch_polymarket_markets()
+        kalshi_df = self.fetch_kalshi_markets()
 
         if poly_df.empty or kalshi_df.empty:
             cprint("\n[!] Need markets from BOTH platforms to detect arbitrage", "yellow", attrs=['bold'])
             if poly_df.empty:
-                cprint("   [X] Polymarket: No data - run polymarket_agent.py", "red")
+                cprint("   [X] Polymarket: API returned no data", "red")
             else:
                 cprint(f"   [+] Polymarket: {len(poly_df)} markets", "green")
             if kalshi_df.empty:
-                cprint("   [X] Kalshi: No data - run kalshi_agent.py", "red")
+                cprint("   [X] Kalshi: API returned no data", "red")
             else:
                 cprint(f"   [+] Kalshi: {len(kalshi_df)} markets", "green")
             return {'status': 'no_data'}
@@ -484,7 +607,7 @@ REASONING: [one sentence explanation]"""
         cprint(f"[#] Kalshi markets: {len(kalshi_df)}", "cyan")
 
         # 2. Fuzzy match markets
-        cprint(f"\n[~] Fuzzy matching titles (threshold: {FUZZY_MATCH_THRESHOLD})...", "cyan")
+        cprint(f"\n[~] Fuzzy matching titles (threshold: {FUZZY_MATCH_THRESHOLD}%)...", "cyan")
         candidates = self.fuzzy_match_markets(poly_df, kalshi_df)
         cprint(f"[+] Found {len(candidates)} candidate pairs", "green")
 
@@ -506,7 +629,7 @@ REASONING: [one sentence explanation]"""
         new_cache_entries = []
         ai_calls = 0
 
-        cprint(f"\n[AI] Validating market equivalence...", "cyan")
+        cprint(f"\n[~] Validating market equivalence...", "cyan")
 
         for candidate in candidates:
             poly_title = candidate['poly_title']
@@ -532,7 +655,7 @@ REASONING: [one sentence explanation]"""
                     'timestamp': timestamp,
                     'polymarket_title': poly_title,
                     'kalshi_title': kalshi_title,
-                    'polymarket_slug': candidate['poly_row'].get('event_slug', ''),
+                    'polymarket_slug': candidate['poly_row'].get('slug', ''),
                     'kalshi_ticker': candidate['kalshi_row'].get('ticker', ''),
                     'fuzzy_match_score': candidate['fuzzy_score'],
                     'ai_equivalence_score': confidence,
@@ -602,8 +725,8 @@ REASONING: [one sentence explanation]"""
                 if strat['spread_cents'] < SPREAD_THRESHOLD_CENTS:
                     continue
 
-                poly_volume = float(poly_row.get('size_usd', 0))
-                kalshi_volume = float(kalshi_row.get('volume_24h', 0))
+                poly_volume = float(poly_row.get('volume', 0))
+                kalshi_volume = float(kalshi_row.get('volume', 0))
                 risk = self.assess_risk(
                     pair['fuzzy_score'],
                     pair.get('ai_equivalence_score', 0.5),
@@ -611,7 +734,7 @@ REASONING: [one sentence explanation]"""
                     kalshi_volume
                 )
 
-                poly_slug = poly_row.get('event_slug', '')
+                poly_slug = poly_row.get('slug', '')
                 kalshi_ticker = kalshi_row.get('ticker', '')
 
                 opportunity = {
@@ -633,8 +756,8 @@ REASONING: [one sentence explanation]"""
                     'net_profit_cents': strat['net_profit_cents'],
                     'risk_level': risk,
                     'strategy': strat['strategy'],
-                    'polymarket_link': f"https://polymarket.com/event/{poly_slug}",
-                    'kalshi_link': f"https://kalshi.com/markets/{kalshi_ticker}",
+                    'polymarket_link': f"https://polymarket.com/event/{poly_slug}" if poly_slug else "",
+                    'kalshi_link': f"https://kalshi.com/markets/{kalshi_ticker}" if kalshi_ticker else "",
                 }
                 all_opportunities.append(opportunity)
 
@@ -643,7 +766,6 @@ REASONING: [one sentence explanation]"""
 
         # 5. Display and save results
         if all_opportunities:
-            # Sort by net profit descending
             all_opportunities.sort(key=lambda x: x['net_profit_cents'], reverse=True)
             self._save_opportunities(all_opportunities)
             self.display_opportunities(all_opportunities)
@@ -665,6 +787,7 @@ REASONING: [one sentence explanation]"""
         })
 
         cprint(f"\n[T] Scan completed in {scan_duration}s", "cyan")
+        cprint(f"[#] API calls: Polymarket={self.polymarket_api_calls}, Kalshi={self.kalshi_api_calls}, Errors={self.api_errors}", "cyan")
 
         return {
             'status': 'complete',
@@ -684,7 +807,6 @@ REASONING: [one sentence explanation]"""
             spread = opp['spread_cents']
             net = opp['net_profit_cents']
 
-            # Color based on profitability
             if net > 0:
                 color = "green"
                 tag = "[+]"
@@ -697,17 +819,19 @@ REASONING: [one sentence explanation]"""
 
             risk_color = {"LOW": "green", "MEDIUM": "yellow", "HIGH": "red"}.get(opp['risk_level'], "white")
 
-            cprint(f"\n{'─'*80}", "cyan")
+            cprint(f"\n{'-'*80}", "cyan")
             cprint(f"{tag} Opportunity #{i+1}", color, attrs=['bold'])
             cprint(f"  Polymarket: {opp['polymarket_title'][:60]}", "white")
             cprint(f"  Kalshi:     {opp['kalshi_title'][:60]}", "white")
             cprint(f"  Match: {opp['fuzzy_match_score']}% fuzzy | {opp['ai_equivalence_score']:.0%} AI confidence", "cyan")
-            cprint(f"  Spread: {spread:.1f}c gross → {net:.1f}c net (after {opp['estimated_fees_cents']:.1f}c fees)", color, attrs=['bold'])
+            cprint(f"  Spread: {spread:.1f}c gross -> {net:.1f}c net (after {opp['estimated_fees_cents']:.1f}c fees)", color, attrs=['bold'])
             cprint(f"  Direction: {opp['spread_direction']}", "white")
             cprint(f"  Risk: {opp['risk_level']}", risk_color, attrs=['bold'])
             cprint(f"  Strategy: {opp['strategy']}", "white")
-            cprint(f"  Polymarket: {opp['polymarket_link']}", "cyan")
-            cprint(f"  Kalshi:     {opp['kalshi_link']}", "cyan")
+            if opp['polymarket_link']:
+                cprint(f"  Polymarket: {opp['polymarket_link']}", "cyan")
+            if opp['kalshi_link']:
+                cprint(f"  Kalshi:     {opp['kalshi_link']}", "cyan")
 
         cprint(f"\n{'='*80}", "green")
         profitable = [o for o in opportunities if o['net_profit_cents'] > 0]
@@ -741,17 +865,16 @@ REASONING: [one sentence explanation]"""
 def main():
     """Arbitrage Agent Main"""
     cprint("\n" + "="*80, "cyan")
-    cprint("[*] Arbitrage Agent - Polymarket vs Kalshi", "cyan", attrs=['bold'])
+    cprint("[*] Arbitrage Agent - Polymarket vs Kalshi (Direct API)", "cyan", attrs=['bold'])
     cprint("="*80, "cyan")
+    cprint(f"[>] Data Source: DIRECT API CALLS (no CSV dependencies)", "green", attrs=['bold'])
+    cprint(f"[~] Polymarket API: {POLYMARKET_API_BASE}", "cyan")
+    cprint(f"[~] Kalshi API: {KALSHI_API_BASE}", "cyan")
     cprint(f"[~] Fuzzy match threshold: {FUZZY_MATCH_THRESHOLD}%", "yellow")
     cprint(f"[~] Spread threshold: {SPREAD_THRESHOLD_CENTS}c", "yellow")
     cprint(f"[~] AI validation: {'ENABLED' if USE_AI_VALIDATION else 'DISABLED'}", "green" if USE_AI_VALIDATION else "yellow")
     cprint(f"[$] Fees: Polymarket {POLYMARKET_FEE_PERCENT}% + Kalshi {KALSHI_FEE_PERCENT}%", "yellow")
     cprint(f"[T] Scan interval: {SCAN_INTERVAL_SECONDS}s", "yellow")
-    cprint("", "yellow")
-    cprint("[F] Data Sources:", "cyan", attrs=['bold'])
-    cprint(f"   Polymarket: {os.path.join(POLYMARKET_DATA, 'markets.csv')}", "white")
-    cprint(f"   Kalshi:     {os.path.join(KALSHI_DATA, 'markets.csv')}", "white")
     cprint("[F] Output:", "cyan", attrs=['bold'])
     cprint(f"   Opportunities: {OPPORTUNITIES_CSV}", "white")
     cprint(f"   Matched pairs: {MATCHED_MARKETS_CSV}", "white")

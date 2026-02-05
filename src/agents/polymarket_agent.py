@@ -26,10 +26,10 @@ from src.models.model_factory import ModelFactory
 # CONFIGURATION - Customize these settings
 # ==============================================================================
 
-# Trade filtering
-MIN_TRADE_SIZE_USD = 500  # Only track trades over this amount
-IGNORE_PRICE_THRESHOLD = 0.02  # Ignore trades within X cents of resolution ($0 or $1)
-LOOKBACK_HOURS = 24  # How many hours back to fetch historical trades on startup
+# Trade filtering (relaxed to capture more markets)
+MIN_TRADE_SIZE_USD = 100  # Only track trades over this amount
+IGNORE_PRICE_THRESHOLD = 0.01  # Ignore trades within X cents of resolution ($0 or $1)
+LOOKBACK_HOURS = 48  # How many hours back to fetch historical trades on startup
 
 # [*] Agent - Market category filters (case-insensitive)
 IGNORE_CRYPTO_KEYWORDS = [

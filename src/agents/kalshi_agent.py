@@ -35,12 +35,12 @@ KALSHI_API_BASE = "https://api.elections.kalshi.com/trade-api/v2"
 POLL_INTERVAL_SECONDS = 60          # Fetch markets every 60 seconds
 REQUEST_DELAY = 0.1                 # Delay between paginated requests (rate limit safety)
 
-# Market filtering
-MIN_VOLUME_24H = 10000              # Minimum 24h volume in dollars
-MIN_OPEN_INTEREST = 5000            # Minimum open interest
-IGNORE_PRICE_THRESHOLD = 0.02      # Ignore near-resolution markets
-MAX_DAYS_TO_CLOSE = 90              # Ignore markets closing > 90 days out
-MIN_DAYS_TO_CLOSE = 1               # Ignore markets closing within 1 day
+# Market filtering (relaxed to collect more markets)
+MIN_VOLUME_24H = 1000               # Minimum 24h volume in dollars
+MIN_OPEN_INTEREST = 500             # Minimum open interest
+IGNORE_PRICE_THRESHOLD = 0.01      # Ignore near-resolution markets
+MAX_DAYS_TO_CLOSE = 365             # Ignore markets closing > 365 days out
+MIN_DAYS_TO_CLOSE = 0               # Include all markets regardless of close time
 
 # Analysis behavior (same cadence as Polymarket agent)
 ANALYSIS_CHECK_INTERVAL_SECONDS = 300  # Check every 5 minutes
