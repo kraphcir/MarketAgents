@@ -13,7 +13,6 @@ from .groq_model import GroqModel
 from .openai_model import OpenAIModel
 from .gemini_model import GeminiModel  # Re-enabled with Gemini 2.5 models
 from .deepseek_model import DeepSeekModel
-from .ollama_model import OllamaModel
 from .xai_model import XAIModel
 import random
 
@@ -25,21 +24,19 @@ class ModelFactory:
         "claude": ClaudeModel,
         "groq": GroqModel,
         "openai": OpenAIModel,
-        "gemini": GeminiModel,  # Re-enabled with Gemini 2.5 models
+        "gemini": GeminiModel,
         "deepseek": DeepSeekModel,
-        "ollama": OllamaModel,  # Add Ollama implementation
-        "xai": XAIModel,  # xAI Grok models
+        "xai": XAIModel,
     }
     
     # Default models for each type
     DEFAULT_MODELS = {
-        "claude": "claude-3-5-haiku-latest",  # Latest fast Claude model
-        "groq": "mixtral-8x7b-32768",        # Fast Mixtral model
-        "openai": "gpt-4o",                  # Latest GPT-4 Optimized
-        "gemini": "gemini-2.5-flash",        # Fast Gemini 2.5 model
-        "deepseek": "deepseek-reasoner",     # Enhanced reasoning model
-        "ollama": "llama3.2",                # Meta's Llama 3.2 - balanced performance
-        "xai": "grok-4-fast-reasoning",      # xAI's Grok 4 Fast with reasoning (best value: 2M context, cheap!)
+        "claude": "claude-3-5-haiku-latest",
+        "groq": "mixtral-8x7b-32768",
+        "openai": "gpt-4o",
+        "gemini": "gemini-2.5-flash",
+        "deepseek": "deepseek-reasoner",
+        "xai": "grok-4-fast-reasoning",
     }
     
     def __init__(self):
@@ -121,36 +118,19 @@ class ModelFactory:
                         cprint(f"  - Traceback:\n{traceback.format_exc()}", "yellow")
             else:
                 cprint(f"  - [i] {key_name} not found", "blue")
-        
-        # Initialize Ollama separately since it doesn't need an API key
-        try:
-            cprint("\n[*] Initializing Ollama model...", "cyan")
-            model_class = self.MODEL_IMPLEMENTATIONS["ollama"]
-            model_instance = model_class(model_name=self.DEFAULT_MODELS["ollama"])
-
-            if model_instance.is_available():
-                self._models["ollama"] = model_instance
-                initialized = True
-                cprint("[+] Successfully initialized Ollama", "green")
-            else:
-                cprint("[!] Ollama server not available - make sure 'ollama serve' is running", "yellow")
-        except Exception as e:
-            cprint(f"[X] Failed to initialize Ollama: {str(e)}", "red")
 
         cprint("\n" + "=" * 50, "cyan")
         cprint(f"[*] Initialization Summary:", "cyan")
-        cprint(f"  - Models attempted: {len(self._get_api_key_mapping()) + 1}", "cyan")  # +1 for Ollama
+        cprint(f"  - Models attempted: {len(self._get_api_key_mapping())}", "cyan")
         cprint(f"  - Models initialized: {len(self._models)}", "cyan")
         cprint(f"  - Available models: {list(self._models.keys())}", "cyan")
-        
+
         if not initialized:
-            cprint("\n[!] No AI models available - check API keys and Ollama server", "yellow")
+            cprint("\n[!] No AI models available - check API keys", "yellow")
             cprint("Required environment variables:", "yellow")
             for model_type, key_name in self._get_api_key_mapping().items():
                 cprint(f"  - {key_name} (for {model_type})", "yellow")
             cprint("  - Add these to your .env file", "yellow")
-            cprint("\nFor Ollama:", "yellow")
-            cprint("  - Make sure 'ollama serve' is running", "yellow")
         else:
             # Print available models
             cprint("\n[*] Available AI Models:", "cyan")
@@ -181,16 +161,11 @@ class ModelFactory:
         if model_name and model.model_name != model_name:
             cprint(f"[*] Reinitializing {model_type} with model {model_name}...", "cyan")
             try:
-                # Special handling for Ollama models
-                if model_type == "ollama":
-                    model = self.MODEL_IMPLEMENTATIONS[model_type](model_name=model_name)
+                if api_key := os.getenv(self._get_api_key_mapping()[model_type]):
+                    model = self.MODEL_IMPLEMENTATIONS[model_type](api_key, model_name=model_name)
                 else:
-                    # For API-based models that need a key
-                    if api_key := os.getenv(self._get_api_key_mapping()[model_type]):
-                        model = self.MODEL_IMPLEMENTATIONS[model_type](api_key, model_name=model_name)
-                    else:
-                        cprint(f"[X] API key not found for {model_type}", "red")
-                        return None
+                    cprint(f"[X] API key not found for {model_type}", "red")
+                    return None
 
                 self._models[model_type] = model
                 cprint(f"[+] Successfully reinitialized with new model", "green")
@@ -210,8 +185,7 @@ class ModelFactory:
             "openai": "OPENAI_KEY",
             "gemini": "GEMINI_KEY",  # Re-enabled with Gemini 2.5 models
             "deepseek": "DEEPSEEK_KEY",
-            "xai": "GROK_API_KEY",  # Grok/xAI uses GROK_API_KEY
-            # Ollama doesn't need an API key as it runs locally
+            "xai": "GROK_API_KEY",
         }
     
     @property

@@ -4,6 +4,7 @@ Run all agents and the dashboard in parallel.
 
 Usage:
     python run_all.py              # Run everything
+    python run_all.py --fresh      # Clear old data and start fresh
     python run_all.py --no-poly    # Skip Polymarket agent
     python run_all.py --no-kalshi  # Skip Kalshi agent
     python run_all.py --no-arb     # Skip Arbitrage agent
@@ -41,6 +42,28 @@ def log(tag, msg):
     print(f"{color}[{label}]{COLORS['reset']} {msg}")
 
 
+def clear_data_directories():
+    """Clear all CSV data from previous runs."""
+    data_dirs = [
+        PROJECT_ROOT / 'src' / 'data' / 'polymarket',
+        PROJECT_ROOT / 'src' / 'data' / 'kalshi',
+        PROJECT_ROOT / 'src' / 'data' / 'arbitrage',
+    ]
+
+    cleared_count = 0
+    for data_dir in data_dirs:
+        if data_dir.exists():
+            for csv_file in data_dir.glob('*.csv'):
+                try:
+                    csv_file.unlink()
+                    cleared_count += 1
+                    log('sys', f'  Removed: {csv_file.relative_to(PROJECT_ROOT)}')
+                except Exception as e:
+                    log('err', f'  Failed to remove {csv_file}: {e}')
+
+    return cleared_count
+
+
 def stream_output(proc, tag):
     """Stream subprocess stdout/stderr with a colored prefix."""
     try:
@@ -53,6 +76,7 @@ def stream_output(proc, tag):
 
 def main():
     parser = argparse.ArgumentParser(description="Run all prediction market agents and dashboard")
+    parser.add_argument('--fresh', action='store_true', help='Clear old data before starting')
     parser.add_argument('--no-poly', action='store_true', help='Skip Polymarket agent')
     parser.add_argument('--no-kalshi', action='store_true', help='Skip Kalshi agent')
     parser.add_argument('--no-arb', action='store_true', help='Skip Arbitrage agent')
@@ -66,6 +90,16 @@ def main():
     print(f"\n{COLORS['sys']}{'='*70}")
     print("  Prediction Market Agent Suite")
     print(f"{'='*70}{COLORS['reset']}\n")
+
+    # Clear old data if --fresh flag is set
+    if args.fresh:
+        log('sys', 'Clearing old data from previous runs...')
+        cleared = clear_data_directories()
+        if cleared > 0:
+            log('sys', f'Cleared {cleared} CSV file(s)')
+        else:
+            log('sys', 'No old data files found')
+        print()
 
     # Determine what to run
     components = []
