@@ -47,17 +47,19 @@ python run_all.py --fresh
 
 **Run individual components:**
 ```bash
-python run_all.py --no-kalshi --no-arb    # Polymarket only
-python run_all.py --no-poly --no-arb      # Kalshi only
-python run_all.py --no-poly --no-kalshi   # Arbitrage only (needs existing market data)
+python run_all.py --no-kalshi --no-arb --no-crypto    # Polymarket only
+python run_all.py --no-poly --no-arb --no-crypto      # Kalshi only
+python run_all.py --no-poly --no-kalshi --no-crypto   # Arbitrage only
+python run_all.py --no-poly --no-kalshi --no-arb      # Crypto Hedge only
 ```
 
 **Run agents directly:**
 ```bash
-python src/agents/polymarket_agent.py   # Polymarket agent
-python src/agents/kalshi_agent.py       # Kalshi agent
-python src/agents/arbitrage_agent.py    # Arbitrage detector
-python dashboard/run.py                 # Dashboard only
+python src/agents/polymarket_agent.py     # Polymarket agent
+python src/agents/kalshi_agent.py         # Kalshi agent
+python src/agents/arbitrage_agent.py      # Arbitrage detector
+python src/agents/crypto_hedge_agent.py   # Crypto Hedge agent
+python dashboard/run.py                   # Dashboard only
 ```
 
 ## Components
@@ -115,6 +117,28 @@ Detects cross-platform arbitrage opportunities between Polymarket and Kalshi.
 
 **Output:** `src/data/arbitrage/`
 
+### Crypto Hedge Agent
+
+Live ETH/BTC price tracking with Kalshi crypto market hedge detection.
+
+**How it works:**
+1. Fetches live ETH/BTC prices from CoinGecko every 10 seconds (free, no API key)
+2. Polls Kalshi for all crypto-related prediction markets every 60 seconds
+3. Extracts price targets from market titles (e.g., "Bitcoin above $100k")
+4. Compares current spot prices against market targets
+5. Identifies hedge opportunities where you can profit from price predictions
+
+**Hedge Types:**
+- **Bullish Hedge**: Price already above target - buy YES to lock in profit
+- **Bearish Hedge**: Price below target - buy NO if you expect it to stay below
+
+**Risk Assessment:**
+- **LOW**: Price >20% from target, >7 days to expiry
+- **MEDIUM**: Price >10% from target, >3 days to expiry
+- **HIGH**: Everything else (close to target or near expiry)
+
+**Output:** `src/data/crypto_hedge/`
+
 ### Dashboard
 
 Web-based dashboard to view all agent data.
@@ -152,6 +176,15 @@ Web-based dashboard to view all agent data.
 |------|-------------|
 | `opportunities.csv` | Detected arbitrage opportunities |
 | `matched_markets.csv` | AI-validated market pairs cache |
+| `history.csv` | Scan history and statistics |
+
+### Crypto Hedge (`src/data/crypto_hedge/`)
+
+| File | Description |
+|------|-------------|
+| `prices.csv` | Current ETH/BTC prices |
+| `kalshi_crypto_markets.csv` | Kalshi crypto prediction markets |
+| `opportunities.csv` | Hedge opportunities with profit estimates |
 | `history.csv` | Scan history and statistics |
 
 ## Configuration
@@ -192,6 +225,18 @@ POLYMARKET_FEE = 0.02         # 2% fee estimate
 KALSHI_FEE = 0.01             # 1% fee estimate
 ```
 
+### Crypto Hedge Agent
+
+Edit `src/agents/crypto_hedge_agent.py`:
+
+```python
+PRICE_UPDATE_INTERVAL = 10    # Fetch prices every 10 seconds
+KALSHI_POLL_INTERVAL = 60     # Fetch Kalshi markets every 60 seconds
+HEDGE_SCAN_INTERVAL = 30      # Scan for opportunities every 30 seconds
+MIN_HEDGE_PROFIT_PCT = 1.0    # Minimum profit % to flag
+KALSHI_FEE = 0.01             # 1% Kalshi fee
+```
+
 ## API Cost Estimates
 
 The agents use AI models for market analysis. Costs depend on which models are enabled.
@@ -229,18 +274,21 @@ The agents use AI models for market analysis. Costs depend on which models are e
 
 3. **Run fewer agents** - Use `--no-kalshi` or `--no-arb` flags
 
+**Note:** The Crypto Hedge Agent uses free APIs (CoinGecko, Kalshi public) and doesn't consume AI tokens.
+
 ## Project Structure
 
 ```
 PolymarketAgent/
 ├── src/
 │   ├── agents/
-│   │   ├── polymarket_agent.py  # Polymarket WebSocket agent
-│   │   ├── kalshi_agent.py      # Kalshi REST polling agent
-│   │   ├── arbitrage_agent.py   # Cross-platform arbitrage detector
-│   │   └── swarm_agent.py       # Multi-model AI swarm
-│   ├── models/                  # LLM provider implementations
-│   │   ├── model_factory.py     # Unified model interface
+│   │   ├── polymarket_agent.py    # Polymarket WebSocket agent
+│   │   ├── kalshi_agent.py        # Kalshi REST polling agent
+│   │   ├── arbitrage_agent.py     # Cross-platform arbitrage detector
+│   │   ├── crypto_hedge_agent.py  # ETH/BTC price + Kalshi hedge detector
+│   │   └── swarm_agent.py         # Multi-model AI swarm
+│   ├── models/                    # LLM provider implementations
+│   │   ├── model_factory.py       # Unified model interface
 │   │   ├── claude_model.py
 │   │   ├── openai_model.py
 │   │   ├── deepseek_model.py
@@ -248,22 +296,23 @@ PolymarketAgent/
 │   │   ├── groq_model.py
 │   │   └── xai_model.py
 │   ├── data/
-│   │   ├── polymarket/          # Polymarket output CSVs
-│   │   ├── kalshi/              # Kalshi output CSVs
-│   │   └── arbitrage/           # Arbitrage output CSVs
-│   └── config.py                # Global configuration
+│   │   ├── polymarket/            # Polymarket output CSVs
+│   │   ├── kalshi/                # Kalshi output CSVs
+│   │   ├── arbitrage/             # Arbitrage output CSVs
+│   │   └── crypto_hedge/          # Crypto hedge output CSVs
+│   └── config.py                  # Global configuration
 ├── dashboard/
 │   ├── backend/
-│   │   ├── main.py              # FastAPI app
-│   │   ├── routes.py            # API endpoints
-│   │   ├── csv_reader.py        # Polymarket data reader
-│   │   └── kalshi_csv_reader.py # Kalshi + arbitrage data reader
+│   │   ├── main.py                # FastAPI app
+│   │   ├── routes.py              # API endpoints
+│   │   ├── csv_reader.py          # Polymarket data reader
+│   │   └── kalshi_csv_reader.py   # Kalshi + arbitrage + crypto data reader
 │   ├── frontend/
 │   │   ├── index.html
 │   │   ├── app.js
 │   │   └── styles.css
-│   └── run.py                   # Dashboard launcher
-├── run_all.py                   # Run all components
+│   └── run.py                     # Dashboard launcher
+├── run_all.py                     # Run all components
 ├── requirements.txt
 ├── .env.example
 └── README.md

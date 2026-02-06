@@ -14,6 +14,7 @@ async def get_stats():
     stats = csv_reader.get_stats()
     stats.update(kalshi_csv_reader.get_kalshi_stats())
     stats.update(kalshi_csv_reader.get_arbitrage_stats())
+    stats.update(kalshi_csv_reader.get_crypto_stats())
     return stats
 
 
@@ -63,6 +64,30 @@ async def get_arbitrage_opportunities(limit: int = Query(default=50, le=200)):
 async def get_arbitrage_history(limit: int = Query(default=20, le=100)):
     """Get arbitrage scan history"""
     return kalshi_csv_reader.read_arbitrage_history(limit=limit)
+
+
+@router.get("/api/crypto/prices")
+async def get_crypto_prices():
+    """Get current crypto prices"""
+    return kalshi_csv_reader.read_crypto_prices()
+
+
+@router.get("/api/crypto/markets")
+async def get_crypto_markets(limit: int = Query(default=100, le=500)):
+    """Get Kalshi crypto markets"""
+    return kalshi_csv_reader.read_crypto_markets(limit=limit)
+
+
+@router.get("/api/crypto/opportunities")
+async def get_crypto_opportunities(limit: int = Query(default=50, le=200)):
+    """Get crypto hedge opportunities"""
+    return kalshi_csv_reader.read_crypto_opportunities(limit=limit)
+
+
+@router.get("/api/crypto/history")
+async def get_crypto_history(limit: int = Query(default=20, le=100)):
+    """Get crypto hedge scan history"""
+    return kalshi_csv_reader.read_crypto_history(limit=limit)
 
 
 @router.get("/api/health")

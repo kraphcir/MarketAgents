@@ -29,6 +29,7 @@ COLORS = {
     'poly':  '\033[96m',   # cyan
     'kalshi': '\033[93m',  # yellow
     'arb':   '\033[95m',   # magenta
+    'crypto': '\033[94m',  # blue
     'dash':  '\033[92m',   # green
     'sys':   '\033[97m',   # white
     'err':   '\033[91m',   # red
@@ -48,6 +49,7 @@ def clear_data_directories():
         PROJECT_ROOT / 'src' / 'data' / 'polymarket',
         PROJECT_ROOT / 'src' / 'data' / 'kalshi',
         PROJECT_ROOT / 'src' / 'data' / 'arbitrage',
+        PROJECT_ROOT / 'src' / 'data' / 'crypto_hedge',
     ]
 
     cleared_count = 0
@@ -80,6 +82,7 @@ def main():
     parser.add_argument('--no-poly', action='store_true', help='Skip Polymarket agent')
     parser.add_argument('--no-kalshi', action='store_true', help='Skip Kalshi agent')
     parser.add_argument('--no-arb', action='store_true', help='Skip Arbitrage agent')
+    parser.add_argument('--no-crypto', action='store_true', help='Skip Crypto Hedge agent')
     parser.add_argument('--no-dash', action='store_true', help='Skip Dashboard')
     args = parser.parse_args()
 
@@ -109,6 +112,8 @@ def main():
         components.append(('kalshi', 'Kalshi Agent', [python, str(PROJECT_ROOT / 'src' / 'agents' / 'kalshi_agent.py')]))
     if not args.no_arb:
         components.append(('arb', 'Arbitrage Agent', [python, str(PROJECT_ROOT / 'src' / 'agents' / 'arbitrage_agent.py')]))
+    if not args.no_crypto:
+        components.append(('crypto', 'Crypto Hedge Agent', [python, str(PROJECT_ROOT / 'src' / 'agents' / 'crypto_hedge_agent.py')]))
     if not args.no_dash:
         components.append(('dash', 'Dashboard', [python, str(PROJECT_ROOT / 'dashboard' / 'run.py')]))
 
