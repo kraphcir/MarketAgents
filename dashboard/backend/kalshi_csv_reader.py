@@ -2,7 +2,7 @@
 
 import pandas as pd
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from datetime import datetime
 
 # Data paths
@@ -22,12 +22,36 @@ CRYPTO_OPPORTUNITIES_CSV = CRYPTO_HEDGE_DATA_DIR / "opportunities.csv"
 CRYPTO_HISTORY_CSV = CRYPTO_HEDGE_DATA_DIR / "history.csv"
 
 
+def _safe_read_csv(filepath: Path) -> Optional[pd.DataFrame]:
+    """Safely read a CSV file, returning None if file is empty or doesn't exist"""
+    if not filepath.exists():
+        return None
+    # Check if file has content (more than just newlines/whitespace)
+    try:
+        with open(filepath, 'r', encoding='utf-8') as f:
+            content = f.read().strip()
+            if not content:
+                return None
+    except Exception:
+        return None
+    # Now try to parse the CSV
+    try:
+        df = pd.read_csv(filepath)
+        if df.empty:
+            return None
+        return df
+    except pd.errors.EmptyDataError:
+        return None
+    except Exception:
+        return None
+
+
 def read_kalshi_markets(limit: int = 100) -> List[Dict[str, Any]]:
     """Read Kalshi markets from CSV, most recent first"""
-    if not KALSHI_MARKETS_CSV.exists():
+    df = _safe_read_csv(KALSHI_MARKETS_CSV)
+    if df is None:
         return []
     try:
-        df = pd.read_csv(KALSHI_MARKETS_CSV)
         df = df.sort_values('first_seen', ascending=False).head(limit)
         return df.fillna('').to_dict('records')
     except Exception as e:
@@ -37,10 +61,10 @@ def read_kalshi_markets(limit: int = 100) -> List[Dict[str, Any]]:
 
 def read_kalshi_predictions(limit: int = 50) -> List[Dict[str, Any]]:
     """Read Kalshi predictions from CSV, most recent first"""
-    if not KALSHI_PREDICTIONS_CSV.exists():
+    df = _safe_read_csv(KALSHI_PREDICTIONS_CSV)
+    if df is None:
         return []
     try:
-        df = pd.read_csv(KALSHI_PREDICTIONS_CSV)
         df = df.sort_values('analysis_timestamp', ascending=False).head(limit)
         return df.fillna('').to_dict('records')
     except Exception as e:
@@ -50,10 +74,10 @@ def read_kalshi_predictions(limit: int = 50) -> List[Dict[str, Any]]:
 
 def read_kalshi_consensus_picks(limit: int = 20) -> List[Dict[str, Any]]:
     """Read Kalshi consensus picks from CSV, most recent first"""
-    if not KALSHI_CONSENSUS_CSV.exists():
+    df = _safe_read_csv(KALSHI_CONSENSUS_CSV)
+    if df is None:
         return []
     try:
-        df = pd.read_csv(KALSHI_CONSENSUS_CSV)
         df = df.sort_values('timestamp', ascending=False).head(limit)
         return df.fillna('').to_dict('records')
     except Exception as e:
@@ -63,10 +87,10 @@ def read_kalshi_consensus_picks(limit: int = 20) -> List[Dict[str, Any]]:
 
 def read_arbitrage_opportunities(limit: int = 50) -> List[Dict[str, Any]]:
     """Read arbitrage opportunities from CSV, most recent first"""
-    if not ARBITRAGE_OPPORTUNITIES_CSV.exists():
+    df = _safe_read_csv(ARBITRAGE_OPPORTUNITIES_CSV)
+    if df is None:
         return []
     try:
-        df = pd.read_csv(ARBITRAGE_OPPORTUNITIES_CSV)
         df = df.sort_values('timestamp', ascending=False).head(limit)
         return df.fillna('').to_dict('records')
     except Exception as e:
@@ -76,10 +100,10 @@ def read_arbitrage_opportunities(limit: int = 50) -> List[Dict[str, Any]]:
 
 def read_arbitrage_history(limit: int = 20) -> List[Dict[str, Any]]:
     """Read arbitrage scan history from CSV, most recent first"""
-    if not ARBITRAGE_HISTORY_CSV.exists():
+    df = _safe_read_csv(ARBITRAGE_HISTORY_CSV)
+    if df is None:
         return []
     try:
-        df = pd.read_csv(ARBITRAGE_HISTORY_CSV)
         df = df.sort_values('timestamp', ascending=False).head(limit)
         return df.fillna('').to_dict('records')
     except Exception as e:
@@ -93,15 +117,15 @@ def get_kalshi_stats() -> Dict[str, Any]:
     kalshi_predictions = 0
     kalshi_picks = 0
 
-    try:
-        if KALSHI_MARKETS_CSV.exists():
-            kalshi_markets = len(pd.read_csv(KALSHI_MARKETS_CSV))
-        if KALSHI_PREDICTIONS_CSV.exists():
-            kalshi_predictions = len(pd.read_csv(KALSHI_PREDICTIONS_CSV))
-        if KALSHI_CONSENSUS_CSV.exists():
-            kalshi_picks = len(pd.read_csv(KALSHI_CONSENSUS_CSV))
-    except Exception as e:
-        print(f"Error getting Kalshi stats: {e}")
+    df = _safe_read_csv(KALSHI_MARKETS_CSV)
+    if df is not None:
+        kalshi_markets = len(df)
+    df = _safe_read_csv(KALSHI_PREDICTIONS_CSV)
+    if df is not None:
+        kalshi_predictions = len(df)
+    df = _safe_read_csv(KALSHI_CONSENSUS_CSV)
+    if df is not None:
+        kalshi_picks = len(df)
 
     return {
         "kalshi_markets": kalshi_markets,
@@ -114,17 +138,15 @@ def get_arbitrage_stats() -> Dict[str, Any]:
     """Get arbitrage-specific stats"""
     opportunities = 0
     profitable = 0
-    best_spread = 0
+    best_spread = 0.0
 
-    try:
-        if ARBITRAGE_OPPORTUNITIES_CSV.exists():
-            df = pd.read_csv(ARBITRAGE_OPPORTUNITIES_CSV)
-            opportunities = len(df)
-            if len(df) > 0:
-                profitable = len(df[df['net_profit_cents'] > 0])
-                best_spread = float(df['spread_cents'].max())
-    except Exception as e:
-        print(f"Error getting arbitrage stats: {e}")
+    df = _safe_read_csv(ARBITRAGE_OPPORTUNITIES_CSV)
+    if df is not None:
+        opportunities = len(df)
+        if 'net_profit_cents' in df.columns:
+            profitable = len(df[df['net_profit_cents'] > 0])
+        if 'spread_cents' in df.columns:
+            best_spread = float(df['spread_cents'].max())
 
     return {
         "arbitrage_opportunities": opportunities,
@@ -135,35 +157,26 @@ def get_arbitrage_stats() -> Dict[str, Any]:
 
 def read_crypto_prices() -> List[Dict[str, Any]]:
     """Read current crypto prices from CSV"""
-    if not CRYPTO_PRICES_CSV.exists():
+    df = _safe_read_csv(CRYPTO_PRICES_CSV)
+    if df is None:
         return []
-    try:
-        df = pd.read_csv(CRYPTO_PRICES_CSV)
-        return df.fillna('').to_dict('records')
-    except Exception as e:
-        print(f"Error reading crypto prices: {e}")
-        return []
+    return df.fillna('').to_dict('records')
 
 
 def read_crypto_markets(limit: int = 100) -> List[Dict[str, Any]]:
     """Read Kalshi crypto markets from CSV"""
-    if not CRYPTO_MARKETS_CSV.exists():
+    df = _safe_read_csv(CRYPTO_MARKETS_CSV)
+    if df is None:
         return []
-    try:
-        df = pd.read_csv(CRYPTO_MARKETS_CSV)
-        df = df.head(limit)
-        return df.fillna('').to_dict('records')
-    except Exception as e:
-        print(f"Error reading crypto markets: {e}")
-        return []
+    return df.head(limit).fillna('').to_dict('records')
 
 
 def read_crypto_opportunities(limit: int = 50) -> List[Dict[str, Any]]:
     """Read crypto hedge opportunities from CSV, sorted by profit"""
-    if not CRYPTO_OPPORTUNITIES_CSV.exists():
+    df = _safe_read_csv(CRYPTO_OPPORTUNITIES_CSV)
+    if df is None:
         return []
     try:
-        df = pd.read_csv(CRYPTO_OPPORTUNITIES_CSV)
         df = df.sort_values('expected_profit_pct', ascending=False).head(limit)
         return df.fillna('').to_dict('records')
     except Exception as e:
@@ -173,10 +186,10 @@ def read_crypto_opportunities(limit: int = 50) -> List[Dict[str, Any]]:
 
 def read_crypto_history(limit: int = 20) -> List[Dict[str, Any]]:
     """Read crypto hedge scan history from CSV"""
-    if not CRYPTO_HISTORY_CSV.exists():
+    df = _safe_read_csv(CRYPTO_HISTORY_CSV)
+    if df is None:
         return []
     try:
-        df = pd.read_csv(CRYPTO_HISTORY_CSV)
         df = df.sort_values('timestamp', ascending=False).head(limit)
         return df.fillna('').to_dict('records')
     except Exception as e:
@@ -191,18 +204,17 @@ def get_crypto_stats() -> Dict[str, Any]:
     opportunities_count = 0
     best_profit = 0.0
 
-    try:
-        if CRYPTO_PRICES_CSV.exists():
-            prices_count = len(pd.read_csv(CRYPTO_PRICES_CSV))
-        if CRYPTO_MARKETS_CSV.exists():
-            markets_count = len(pd.read_csv(CRYPTO_MARKETS_CSV))
-        if CRYPTO_OPPORTUNITIES_CSV.exists():
-            df = pd.read_csv(CRYPTO_OPPORTUNITIES_CSV)
-            opportunities_count = len(df)
-            if len(df) > 0:
-                best_profit = float(df['expected_profit_pct'].max())
-    except Exception as e:
-        print(f"Error getting crypto stats: {e}")
+    df = _safe_read_csv(CRYPTO_PRICES_CSV)
+    if df is not None:
+        prices_count = len(df)
+    df = _safe_read_csv(CRYPTO_MARKETS_CSV)
+    if df is not None:
+        markets_count = len(df)
+    df = _safe_read_csv(CRYPTO_OPPORTUNITIES_CSV)
+    if df is not None:
+        opportunities_count = len(df)
+        if 'expected_profit_pct' in df.columns:
+            best_profit = float(df['expected_profit_pct'].max())
 
     return {
         "crypto_prices_tracked": prices_count,
