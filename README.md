@@ -122,7 +122,7 @@ Detects cross-platform arbitrage opportunities between Polymarket and Kalshi.
 Live ETH/BTC price tracking with Kalshi crypto market hedge detection.
 
 **How it works:**
-1. Fetches live ETH/BTC prices from CoinGecko every 10 seconds (free, no API key)
+1. Fetches live ETH/BTC prices from CoinGecko every 30 seconds (free, no API key)
 2. Polls Kalshi for all crypto-related prediction markets every 60 seconds
 3. Extracts price targets from market titles (e.g., "Bitcoin above $100k")
 4. Compares current spot prices against market targets
@@ -230,7 +230,7 @@ KALSHI_FEE = 0.01             # 1% fee estimate
 Edit `src/agents/crypto_hedge_agent.py`:
 
 ```python
-PRICE_UPDATE_INTERVAL = 10    # Fetch prices every 10 seconds
+PRICE_UPDATE_INTERVAL = 30    # Fetch prices every 30 seconds (CoinGecko limit)
 KALSHI_POLL_INTERVAL = 60     # Fetch Kalshi markets every 60 seconds
 HEDGE_SCAN_INTERVAL = 30      # Scan for opportunities every 30 seconds
 MIN_HEDGE_PROFIT_PCT = 1.0    # Minimum profit % to flag

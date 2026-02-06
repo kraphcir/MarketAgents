@@ -38,7 +38,7 @@ load_dotenv(PROJECT_ROOT / '.env')
 # =============================================================================
 
 # Price feed settings
-PRICE_UPDATE_INTERVAL = 10  # Fetch prices every 10 seconds
+PRICE_UPDATE_INTERVAL = 30  # Fetch prices every 30 seconds (CoinGecko free tier limit)
 PRICE_HISTORY_SIZE = 360  # Keep 1 hour of price history (at 10s intervals)
 
 # Kalshi settings
@@ -767,7 +767,7 @@ class CryptoHedgeAgent:
         print()
 
         # Display prices
-        cprint("📊 LIVE PRICES", "white", attrs=["bold"])
+        cprint("LIVE PRICES", "white", attrs=["bold"])
         cprint("-" * 40, "white")
         for symbol, data in prices.items():
             change_color = "green" if data.price_24h_change_pct >= 0 else "red"
@@ -777,14 +777,14 @@ class CryptoHedgeAgent:
         print()
 
         # Display Kalshi market count
-        cprint(f"📈 KALSHI CRYPTO MARKETS: {len(markets)}", "white", attrs=["bold"])
+        cprint(f"KALSHI CRYPTO MARKETS: {len(markets)}", "white", attrs=["bold"])
         btc_markets = len([m for m in markets if m.crypto_asset == 'BTC'])
         eth_markets = len([m for m in markets if m.crypto_asset == 'ETH'])
         cprint(f"  BTC: {btc_markets} | ETH: {eth_markets}", "white")
         print()
 
         # Display hedge opportunities
-        cprint(f"💰 HEDGE OPPORTUNITIES: {len(opportunities)}", "white", attrs=["bold"])
+        cprint(f"HEDGE OPPORTUNITIES: {len(opportunities)}", "white", attrs=["bold"])
         cprint("-" * 70, "white")
 
         if opportunities:

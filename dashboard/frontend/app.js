@@ -346,6 +346,195 @@ function ArbitrageTable({ opportunities }) {
     );
 }
 
+// ── Crypto Hedge Components ─────────────────────────────────────────────────
+
+function CryptoPricesDisplay({ prices }) {
+    if (!prices.length) {
+        return (
+            <div className="crypto-prices-bar">
+                <span className="crypto-price">Waiting for price data...</span>
+            </div>
+        );
+    }
+
+    return (
+        <div className="crypto-prices-bar">
+            {prices.map((p, i) => {
+                const changeClass = parseFloat(p.change_24h_pct || 0) >= 0 ? 'price-up' : 'price-down';
+                const changeStr = parseFloat(p.change_24h_pct || 0) >= 0
+                    ? `+${parseFloat(p.change_24h_pct).toFixed(2)}%`
+                    : `${parseFloat(p.change_24h_pct).toFixed(2)}%`;
+                return (
+                    <div key={i} className="crypto-price">
+                        <strong>{p.symbol}</strong>: ${parseFloat(p.price_usd || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                        <span className={changeClass}> ({changeStr})</span>
+                    </div>
+                );
+            })}
+        </div>
+    );
+}
+
+function CryptoHedgeTable({ opportunities, prices }) {
+    if (!opportunities.length) {
+        return (
+            <div className="empty-state">
+                <h3>No Crypto Hedge Opportunities Yet</h3>
+                <p>Run the Crypto Hedge agent to detect BTC/ETH hedging opportunities on Kalshi</p>
+                <div className="hedge-explainer">
+                    <h4>How Hedge Detection Works:</h4>
+                    <ol>
+                        <li><strong>Fetch Live Prices:</strong> Get current ETH/BTC spot prices from CoinGecko</li>
+                        <li><strong>Scan Kalshi Markets:</strong> Find crypto prediction markets (e.g., "Bitcoin above $100k by Dec 31")</li>
+                        <li><strong>Extract Price Targets:</strong> Parse target price and direction from market titles</li>
+                        <li><strong>Calculate Opportunity:</strong> Compare spot price vs. target to find mispriced contracts</li>
+                        <li><strong>Compute Profit:</strong> If current price already exceeds target, YES contract should be near $1.00</li>
+                    </ol>
+                </div>
+            </div>
+        );
+    }
+
+    const getRiskClass = (risk) => {
+        const r = String(risk).toUpperCase();
+        if (r === 'LOW') return 'risk-low';
+        if (r === 'MEDIUM') return 'risk-medium';
+        return 'risk-high';
+    };
+
+    const getHedgeTypeClass = (type) => {
+        if (type === 'bullish_hedge') return 'hedge-bullish';
+        return 'hedge-bearish';
+    };
+
+    return (
+        <div>
+            <CryptoPricesDisplay prices={prices} />
+
+            <div className="hedge-math-explainer">
+                <h4>Hedge Profit Calculation:</h4>
+                <code>
+                    Expected Profit % = ((Payout - Cost) × (1 - Fee)) / Cost × 100<br/>
+                    Where: Payout = $1.00 if contract resolves YES, Cost = Ask Price, Fee = 1%
+                </code>
+            </div>
+
+            {opportunities.map((o, i) => {
+                const currentPrice = parseFloat(o.current_price || 0);
+                const targetPrice = parseFloat(o.target_price || 0);
+                const yesCost = parseFloat(o.yes_ask || 0);
+                const noCost = parseFloat(o.no_ask || 0);
+                const impliedProb = parseFloat(o.implied_probability || 0);
+                const expectedProfit = parseFloat(o.expected_profit_pct || 0);
+                const priceDiff = currentPrice - targetPrice;
+                const priceDiffPct = ((priceDiff / targetPrice) * 100).toFixed(1);
+
+                return (
+                    <div key={i} className={`hedge-card ${getHedgeTypeClass(o.hedge_type)}`}>
+                        <div className="hedge-header">
+                            <span className="hedge-rank">#{i + 1}</span>
+                            <span className="hedge-asset">{o.crypto_asset}</span>
+                            <span className={`badge ${getRiskClass(o.risk_level)}`}>{o.risk_level} RISK</span>
+                            <span className="hedge-profit">+{expectedProfit.toFixed(1)}% Expected</span>
+                        </div>
+
+                        <h3>
+                            <a
+                                href={`https://kalshi.com/markets/${o.kalshi_ticker}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="link"
+                            >
+                                {o.kalshi_title}
+                            </a>
+                        </h3>
+
+                        <div className="hedge-math">
+                            <div className="math-section">
+                                <h5>Price Analysis</h5>
+                                <table className="math-table">
+                                    <tbody>
+                                        <tr>
+                                            <td>Current {o.crypto_asset} Price:</td>
+                                            <td className="math-value">${currentPrice.toLocaleString()}</td>
+                                        </tr>
+                                        <tr>
+                                            <td>Market Target ({o.direction}):</td>
+                                            <td className="math-value">${targetPrice.toLocaleString()}</td>
+                                        </tr>
+                                        <tr>
+                                            <td>Price vs Target:</td>
+                                            <td className={`math-value ${priceDiff > 0 ? 'price-up' : 'price-down'}`}>
+                                                {priceDiff > 0 ? '+' : ''}{priceDiffPct}% ({priceDiff > 0 ? 'ABOVE' : 'BELOW'})
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <div className="math-section">
+                                <h5>Contract Pricing</h5>
+                                <table className="math-table">
+                                    <tbody>
+                                        <tr>
+                                            <td>YES Ask (buy price):</td>
+                                            <td className="math-value">${yesCost.toFixed(2)}</td>
+                                        </tr>
+                                        <tr>
+                                            <td>NO Ask (buy price):</td>
+                                            <td className="math-value">${noCost.toFixed(2)}</td>
+                                        </tr>
+                                        <tr>
+                                            <td>Implied Probability:</td>
+                                            <td className="math-value">{(impliedProb * 100).toFixed(1)}%</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <div className="math-section">
+                                <h5>Profit Calculation</h5>
+                                <div className="profit-breakdown">
+                                    {o.hedge_type === 'bullish_hedge' ? (
+                                        <>
+                                            <p><strong>Strategy:</strong> Buy YES @ ${yesCost.toFixed(2)}</p>
+                                            <p>If price stays above ${targetPrice.toLocaleString()}, contract pays $1.00</p>
+                                            <p>Gross Profit: $1.00 - ${yesCost.toFixed(2)} = ${(1 - yesCost).toFixed(2)}</p>
+                                            <p>After 1% Fee: ${((1 - yesCost) * 0.99).toFixed(2)}</p>
+                                            <p className="profit-result">
+                                                Return: <strong>+{expectedProfit.toFixed(1)}%</strong>
+                                            </p>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <p><strong>Strategy:</strong> Buy NO @ ${noCost.toFixed(2)}</p>
+                                            <p>If price stays below ${targetPrice.toLocaleString()}, contract pays $1.00</p>
+                                            <p>Gross Profit: $1.00 - ${noCost.toFixed(2)} = ${(1 - noCost).toFixed(2)}</p>
+                                            <p>After 1% Fee: ${((1 - noCost) * 0.99).toFixed(2)}</p>
+                                            <p className="profit-result">
+                                                Return: <strong>+{expectedProfit.toFixed(1)}%</strong>
+                                            </p>
+                                        </>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="hedge-strategy">
+                            <strong>Summary:</strong> {o.strategy}
+                        </div>
+
+                        <div className="hedge-meta">
+                            <span>Type: {o.hedge_type.replace('_', ' ').toUpperCase()}</span>
+                            <span>Expires: {o.close_time?.split('T')[0]}</span>
+                        </div>
+                    </div>
+                );
+            })}
+        </div>
+    );
+}
+
 // ── Main Dashboard ───────────────────────────────────────────────────────────
 
 function Dashboard() {
@@ -354,6 +543,7 @@ function Dashboard() {
         total_markets: 0, total_predictions: 0, total_consensus_picks: 0,
         kalshi_markets: 0, kalshi_predictions: 0, kalshi_consensus_picks: 0,
         arbitrage_opportunities: 0, arbitrage_profitable: 0, arbitrage_best_spread_cents: 0,
+        crypto_opportunities: 0, crypto_best_profit_pct: 0,
     });
     const [markets, setMarkets] = useState([]);
     const [predictions, setPredictions] = useState([]);
@@ -361,13 +551,16 @@ function Dashboard() {
     const [kalshiMarkets, setKalshiMarkets] = useState([]);
     const [kalshiConsensus, setKalshiConsensus] = useState([]);
     const [arbitrageOpps, setArbitrageOpps] = useState([]);
+    const [cryptoPrices, setCryptoPrices] = useState([]);
+    const [cryptoOpps, setCryptoOpps] = useState([]);
     const [loading, setLoading] = useState(true);
     const [lastRefresh, setLastRefresh] = useState(null);
 
     const refreshData = async () => {
         try {
             const [statsData, marketsData, predictionsData, consensusData,
-                   kalshiMarketsData, kalshiConsensusData, arbData] = await Promise.all([
+                   kalshiMarketsData, kalshiConsensusData, arbData,
+                   cryptoPricesData, cryptoOppsData] = await Promise.all([
                 fetchAPI('/stats'),
                 fetchAPI('/markets?limit=100'),
                 fetchAPI('/predictions?limit=50'),
@@ -375,6 +568,8 @@ function Dashboard() {
                 fetchAPI('/kalshi/markets?limit=100'),
                 fetchAPI('/kalshi/consensus?limit=20'),
                 fetchAPI('/arbitrage/opportunities?limit=50'),
+                fetchAPI('/crypto/prices'),
+                fetchAPI('/crypto/opportunities?limit=20'),
             ]);
 
             setStats(statsData);
@@ -384,6 +579,8 @@ function Dashboard() {
             setKalshiMarkets(kalshiMarketsData);
             setKalshiConsensus(kalshiConsensusData);
             setArbitrageOpps(arbData);
+            setCryptoPrices(cryptoPricesData);
+            setCryptoOpps(cryptoOppsData);
             setLastRefresh(new Date().toLocaleTimeString());
         } catch (error) {
             console.error('Error fetching data:', error);
@@ -455,6 +652,14 @@ function Dashboard() {
                 >
                     Arbitrage {stats.arbitrage_profitable > 0 ? `(${stats.arbitrage_profitable})` : ''}
                 </button>
+
+                <button
+                    className={`tab ${activeTab === 'crypto_hedge' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('crypto_hedge')}
+                    style={stats.crypto_opportunities > 0 ? {borderColor: '#f7931a'} : {}}
+                >
+                    Crypto Hedge {stats.crypto_opportunities > 0 ? `(${stats.crypto_opportunities})` : ''}
+                </button>
             </div>
 
             <div className="panel">
@@ -468,6 +673,7 @@ function Dashboard() {
                         {activeTab === 'kalshi_picks' && <KalshiConsensusPicks picks={kalshiConsensus} />}
                         {activeTab === 'kalshi_markets' && <KalshiMarketsTable markets={kalshiMarkets} />}
                         {activeTab === 'arbitrage' && <ArbitrageTable opportunities={arbitrageOpps} />}
+                        {activeTab === 'crypto_hedge' && <CryptoHedgeTable opportunities={cryptoOpps} prices={cryptoPrices} />}
                     </>
                 )}
             </div>
