@@ -35,24 +35,24 @@ KALSHI_API_BASE = "https://api.elections.kalshi.com/trade-api/v2"
 POLL_INTERVAL_SECONDS = 60          # Fetch markets every 60 seconds
 REQUEST_DELAY = 0.1                 # Delay between paginated requests (rate limit safety)
 
-# Market filtering (relaxed to collect more markets)
-MIN_VOLUME_24H = 1000               # Minimum 24h volume in dollars
-MIN_OPEN_INTEREST = 500             # Minimum open interest
-IGNORE_PRICE_THRESHOLD = 0.01      # Ignore near-resolution markets
+# Market filtering (very relaxed to collect more markets)
+MIN_VOLUME_24H = 0                  # No minimum volume - get all markets
+MIN_OPEN_INTEREST = 0               # No minimum open interest
+IGNORE_PRICE_THRESHOLD = 0.02       # Only ignore markets >98% or <2%
 MAX_DAYS_TO_CLOSE = 365             # Ignore markets closing > 365 days out
 MIN_DAYS_TO_CLOSE = 0               # Include all markets regardless of close time
 
-# Analysis behavior (same cadence as Polymarket agent)
-ANALYSIS_CHECK_INTERVAL_SECONDS = 300  # Check every 5 minutes
-NEW_MARKETS_FOR_ANALYSIS = 3          # Trigger analysis with 3 fresh markets
-MARKETS_TO_ANALYZE = 3                # Number of markets to send to AI
+# Analysis behavior (faster triggers for single-model use)
+ANALYSIS_CHECK_INTERVAL_SECONDS = 60  # Check every 1 minute
+NEW_MARKETS_FOR_ANALYSIS = 1          # Trigger analysis with just 1 fresh market
+MARKETS_TO_ANALYZE = 5                # Analyze 5 markets at a time
 MARKETS_TO_DISPLAY = 20               # Markets to show in status
-REANALYSIS_HOURS = 8                  # Re-analyze after this many hours
+REANALYSIS_HOURS = 4                  # Re-analyze after 4 hours
 
 # AI Configuration
-USE_SWARM_MODE = True
-AI_MODEL_PROVIDER = "xai"
-AI_MODEL_NAME = "grok-2-fast-reasoning"
+USE_SWARM_MODE = False  # Single model mode - faster, cheaper
+AI_MODEL_PROVIDER = "claude"
+AI_MODEL_NAME = "claude-sonnet-4-5"
 SEND_PRICE_INFO_TO_AI = False
 TOP_MARKETS_COUNT = 5
 

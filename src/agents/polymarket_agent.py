@@ -26,10 +26,10 @@ from src.models.model_factory import ModelFactory
 # CONFIGURATION - Customize these settings
 # ==============================================================================
 
-# Trade filtering (relaxed to capture more markets)
-MIN_TRADE_SIZE_USD = 100  # Only track trades over this amount
-IGNORE_PRICE_THRESHOLD = 0.01  # Ignore trades within X cents of resolution ($0 or $1)
-LOOKBACK_HOURS = 48  # How many hours back to fetch historical trades on startup
+# Trade filtering (very relaxed to capture more markets)
+MIN_TRADE_SIZE_USD = 50  # Only track trades over this amount
+IGNORE_PRICE_THRESHOLD = 0.02  # Ignore trades within 2 cents of resolution ($0 or $1)
+LOOKBACK_HOURS = 72  # How many hours back to fetch historical trades on startup
 
 # [*] Agent - Market category filters (case-insensitive)
 IGNORE_CRYPTO_KEYWORDS = [
@@ -51,16 +51,16 @@ IGNORE_SPORTS_KEYWORDS = [
 ]
 
 # Agent behavior - REAL-TIME WebSocket + Analysis
-ANALYSIS_CHECK_INTERVAL_SECONDS = 300  # How often to check for new markets to analyze (5 minutes)
-NEW_MARKETS_FOR_ANALYSIS = 3  # Trigger analysis when we have 3 NEW unanalyzed markets
-MARKETS_TO_ANALYZE = 3  # Number of recent markets to send to AI
+ANALYSIS_CHECK_INTERVAL_SECONDS = 60  # How often to check for new markets to analyze (1 minute)
+NEW_MARKETS_FOR_ANALYSIS = 1  # Trigger analysis when we have 1 NEW unanalyzed market
+MARKETS_TO_ANALYZE = 5  # Number of recent markets to send to AI
 MARKETS_TO_DISPLAY = 20  # Number of recent markets to print after each update
-REANALYSIS_HOURS = 8  # Re-analyze markets after this many hours (even if previously analyzed)
+REANALYSIS_HOURS = 4  # Re-analyze markets after this many hours (even if previously analyzed)
 
 # AI Configuration
-USE_SWARM_MODE = True  # Use swarm AI (multiple models) instead of single XAI model
-AI_MODEL_PROVIDER = "xai"  # Model to use if USE_SWARM_MODE = False
-AI_MODEL_NAME = "grok-2-fast-reasoning"  # Model name if not using swarm
+USE_SWARM_MODE = False  # Single model mode - faster, cheaper
+AI_MODEL_PROVIDER = "claude"  # Model to use if USE_SWARM_MODE = False
+AI_MODEL_NAME = "claude-sonnet-4-5"  # Model name if not using swarm
 SEND_PRICE_INFO_TO_AI = False  # Send market price/odds to AI models (True = include price, False = no price)
 
 # 
